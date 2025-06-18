@@ -1,0 +1,700 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Juego de Patatas Fritas</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #B4D7F0;
+        }
+        #gameCanvas {
+            display: none;
+            max-width: 800px;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+        #mainMenu {
+            text-align: center;
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 100%);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #logo {
+            max-width: 40%;
+            max-height: 20%;
+            object-fit: contain;
+        }
+        #howToPlay {
+            max-width: 90%;
+            max-height: 50%;
+            margin: 10px auto;
+            font-family: Arial, sans-serif;
+            color: #333;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+        #howToPlay h2 {
+            color: #4CAF50;
+            margin-top: 0;
+        }
+        #howToPlay p, #howToPlay ul {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        #startButton, #scoresButton {
+            padding: 10px 20px;
+            font-size: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            margin: 5px;
+        }
+        #startButton:hover, #scoresButton:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+        #muteButtons {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            z-index: 2;
+        }
+        #muteMusic, #muteSounds {
+            padding: 5px 10px;
+            font-size: 16px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+        #muteMusic:hover, #muteSounds:hover {
+            opacity: 1;
+        }
+        #scoreForm, #scoresList {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 3;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            max-width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+        #scoreForm input {
+            display: block;
+            margin: 10px auto;
+            padding: 8px;
+            width: 80%;
+            max-width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #scoreForm button, #scoresList button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #scoreForm button:hover, #scoresList button:hover {
+            background-color: #45a049;
+        }
+        #scoresList table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        #scoresList th, #scoresList td {
+            padding: 8px;
+            border: 1px solid #ddd;
+        }
+        #scoresList th {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+            return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+                try {
+                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                    var firstSheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[firstSheetName];
+                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                    var filteredData = jsonData.filter(row => row.some(filledCell));
+                    var headerRowIndex = filteredData.findIndex((row, index) =>
+                        row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                    );
+                    if (headerRowIndex === -1 || headerRowIndex > 25) {
+                        headerRowIndex = 0;
+                    }
+                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                    return csv;
+                } catch (e) {
+                    console.error(e);
+                    return "";
+                }
+            }
+            return gk_fileData[filename] || "";
+        }
+    </script>
+    <div id="mainMenu">
+        <img src="logo.png" alt="Logo" id="logo">
+        <div id="howToPlay">
+            <h2>Cómo jugar</h2>
+            <p>Mueve la bolsa con el ratón o el dedo para atrapar patatas fritas que caen del cielo. ¡Consigue la mayor puntuación antes de que se acabe el tiempo!</p>
+            <ul>
+                <li><strong>Patatas fritas</strong>: Suman 10 puntos más 2 puntos por cada patata en racha consecutiva.</li>
+                <li><strong>Objetos negativos</strong>: Restan puntos y 1 segundo al temporizador, rompiendo la racha.</li>
+                <li><strong>Tiempo</strong>: Tienes 60 segundos para jugar. ¡Atrapa números (3, 5 o 10) para ganar más tiempo!</li>
+                <li><strong>Racha</strong>: Cada 10 patatas consecutivas cambian la bolsa y aumentan la bonificación por racha en 2 puntos.</li>
+            </ul>
+        </div>
+        <button id="startButton">Iniciar</button>
+        <button id="scoresButton">Puntuaciones</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="muteButtons" style="display: none;">
+        <button id="muteMusic">🔊</button>
+        <button id="muteSounds">🔊</button>
+    </div>
+    <div id="scoreForm">
+        <h2>¡Juego terminado!</h2>
+        <p>Tu puntuación: <span id="finalScore"></span></p>
+        <p>Ingresa tus datos para registrar tu puntuación:</p>
+        <input type="text" id="playerName" placeholder="Nombre" maxlength="20" required>
+        <input type="email" id="playerEmail" placeholder="Email" required>
+        <button id="submitScore">Enviar</button>
+        <button id="skipScore">Omitir</button>
+    </div>
+    <div id="scoresList">
+        <h2>Mejores Puntuaciones</h2>
+        <table id="scoresTable">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Puntuación</th>
+                </tr>
+            </thead>
+            <tbody id="scoresBody"></tbody>
+        </table>
+        <button id="closeScores">Cerrar</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('mainMenu');
+        const startButton = document.getElementById('startButton');
+        const scoresButton = document.getElementById('scoresButton');
+        const muteButtons = document.getElementById('muteButtons');
+        const muteMusic = document.getElementById('muteMusic');
+        const muteSounds = document.getElementById('muteSounds');
+        const scoreForm = document.getElementById('scoreForm');
+        const finalScore = document.getElementById('finalScore');
+        const playerName = document.getElementById('playerName');
+        const playerEmail = document.getElementById('playerEmail');
+        const submitScore = document.getElementById('submitScore');
+        const skipScore = document.getElementById('skipScore');
+        const scoresList = document.getElementById('scoresList');
+        const scoresBody = document.getElementById('scoresBody');
+        const closeScores = document.getElementById('closeScores');
+
+        const GOOGLE_FORM_URL = 'https://docs.google.com/forms/u/0/d/e/1FAIpQLSfRSeaZ-eAzKOwx0KgNPNW5Z_rFlVBlTCXNYsPRRmM8ypZH8g/formResponse'; // Reemplaza con la URL del formulario
+        const FORM_FIELDS = {
+            name: 'entry.1409232198', // Reemplaza con el ID del campo de nombre
+            email: 'entry.1864486235', // Reemplaza con el ID del campo de email
+            score: 'entry.272840135' // Reemplaza con el ID del campo de puntuación
+        };
+        const SCORES_API_URL = 'https://script.google.com/macros/s/AKfycby6s0hh4BKW0CV38h0tNt2_H6iBdNf4Tg9BIyZecG63Qchr9ma0ZZRFsFjxak21T8Yu/exec'; // Reemplaza con la URL de la Web App
+
+        function enterFullscreen() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+                elem.mozRequestFullScreen();
+            }
+        }
+
+        function exitFullscreen() {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen();
+            }
+        }
+
+        function resizeCanvas() {
+            const maxWidth = 800;
+            const width = Math.min(window.innerWidth, maxWidth);
+            const height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let gameStarted = false;
+        let score = 0;
+        let streak = 0;
+        let streakBonus = 2;
+        let timeLeft = 60;
+        let objects = [];
+        let bag = { x: 0, width: 100, height: 100, potatoes: 0, bagIndex: 0 };
+        const bagGrowthFactor = 1.005;
+        let musicMuted = false;
+        let soundsMuted = false;
+
+        const backgroundMusic = new Audio('bgmusic.mp3');
+        backgroundMusic.loop = true;
+        const potatoSound = new Audio('collect.wav');
+        const negativeSound = new Audio('miss.wav');
+        const bagChangeSound = new Audio('lvlup.wav');
+        const timeSound = new Audio('time.wav');
+
+        function loadImage(src) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = src;
+            return img;
+        }
+        const images = {
+            bags: [loadImage('bag1.webp'), loadImage('bag2.png'), loadImage('bag3.webp')],
+            potatoes: [loadImage('potato1.webp'), loadImage('potato2.webp')],
+            negatives: Array(7).fill().map((_, i) => loadImage(`negative${i+1}.png`)),
+            logo: document.getElementById('logo')
+        };
+
+        function createNumberImage(value) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 40;
+            canvas.height = 40;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000';
+            ctx.font = '32px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(value, 20, 20);
+            return canvas;
+        }
+
+        function updateBagPosition(e) {
+            if (gameStarted) {
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+                bag.x = Math.max(0, Math.min(x - bag.width / 2, canvas.width - bag.width));
+            }
+        }
+        canvas.addEventListener('mousemove', updateBagPosition);
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            updateBagPosition(e);
+        });
+
+        function spawnObject() {
+            const type = Math.random();
+            let img, value, isNegative = false, isNumber = false;
+            if (type < 0.6) {
+                img = images.potatoes[Math.floor(Math.random() * 2)];
+                value = 10;
+            } else if (type < 0.98) {
+                const idx = Math.floor(Math.random() * 7);
+                img = images.negatives[idx];
+                value = idx < 5 ? -7 : -12;
+                isNegative = true;
+            } else {
+                const num = [3, 5, 10][Math.floor(Math.random() * 3)];
+                img = createNumberImage(num);
+                value = num;
+                isNumber = true;
+            }
+            const width = canvas.width * 0.02;
+            objects.push({
+                x: Math.random() * (canvas.width - width),
+                y: -width,
+                width: width,
+                height: width * (img.height / img.width),
+                img: img,
+                value: value,
+                isNegative: isNegative,
+                isNumber: isNumber,
+                rotation: 0,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+
+        function checkCollision(obj) {
+            const bagY = canvas.height - bag.height;
+            const objRect = { left: obj.x, top: obj.y, right: obj.x + obj.width, bottom: obj.y + obj.height };
+            const bagRect = { left: bag.x, top: bagY, right: bag.x + bag.width, bottom: bagY + bag.height };
+            return !(objRect.right < bagRect.left || 
+                     objRect.left > bagRect.right || 
+                     objRect.bottom < bagRect.top || 
+                     objRect.top > bagRect.bottom);
+        }
+
+        let particles = [];
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function drawGrassMargins() {
+            const marginWidth = (window.innerWidth - canvas.width) / 2;
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(-marginWidth, 0, marginWidth, canvas.height);
+            ctx.fillRect(canvas.width, 0, marginWidth, canvas.height);
+            ctx.fillStyle = '#32CD32';
+            for (let x = -marginWidth; x < window.innerWidth; x += 10) {
+                for (let y = 0; y < canvas.height; y += 20) {
+                    if (x < 0 || x >= canvas.width) {
+                        ctx.beginPath();
+                        ctx.arc(x + 5, y + 5, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        async function submitScoreToGoogleForm(name, email, submittedScore) {
+            if (submittedScore !== score) {
+                console.error('Puntuación no válida');
+                alert('Error: Puntuación no válida.');
+                return false;
+            }
+            const formData = new FormData();
+            formData.append(FORM_FIELDS.name, name);
+            formData.append(FORM_FIELDS.email, email);
+            formData.append(FORM_FIELDS.score, submittedScore.toString());
+
+            try {
+                const response = await fetch(GOOGLE_FORM_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: formData
+                });
+                return true;
+            } catch (error) {
+                console.error('Error al enviar:', error);
+                alert('No se pudo registrar la puntuación. Inténtalo de nuevo.');
+                return false;
+            }
+        }
+
+        async function fetchTopScores() {
+            try {
+                const response = await fetch(SCORES_API_URL);
+                if (!response.ok) throw new Error('Error al obtener puntuaciones');
+                const scores = await response.json();
+                if (scores.error) throw new Error(scores.error);
+                scoresBody.innerHTML = '';
+                scores.slice(0, 10).forEach(({ name, score }) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${name}</td><td>${score}</td>`;
+                    scoresBody.appendChild(row);
+                });
+                scoresList.style.display = 'block';
+            } catch (error) {
+                console.error('Error:', error);
+                alert('No se pudieron cargar las puntuaciones.');
+            }
+        }
+
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            if (!gameStarted || window.innerWidth <= window.innerHeight) {
+                if (gameStarted) {
+                    backgroundMusic.pause();
+                    exitFullscreen();
+                    alert('Por favor, gira tu dispositivo a horizontal para continuar jugando.');
+                    gameStarted = false;
+                    menu.style.display = 'flex';
+                    canvas.style.display = 'none';
+                    muteButtons.style.display = 'none';
+                }
+                return;
+            }
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, window.innerWidth, canvas.height);
+            drawGrassMargins();
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(1, '#E0F6FF');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            timeLeft -= deltaTime;
+            if (timeLeft <= 0) {
+                backgroundMusic.pause();
+                exitFullscreen();
+                finalScore.textContent = score;
+                scoreForm.style.display = 'block';
+                canvas.style.display = 'none';
+                muteButtons.style.display = 'none';
+                gameStarted = false;
+                return;
+            }
+
+            if (Math.random() < 0.03) spawnObject();
+
+            objects.forEach((obj, i) => {
+                obj.y += 180 * deltaTime;
+                obj.rotation += obj.rotationSpeed;
+                if (obj.y > canvas.height) {
+                    objects.splice(i, 1);
+                    return;
+                }
+                if (checkCollision(obj)) {
+                    if (obj.isNegative) {
+                        score += obj.value;
+                        timeLeft -= 1;
+                        streak = 0;
+                        if (!soundsMuted) negativeSound.play();
+                        createParticles(obj.x + obj.width / 2, obj.y + obj.height / 2, '#ff0000');
+                    } else if (obj.isNumber) {
+                        timeLeft += obj.value;
+                        if (!soundsMuted) timeSound.play();
+                        createParticles(obj.x + obj.width / 2, obj.y + obj.height / 2, '#00ff00');
+                    } else {
+                        score += 10 + streak * streakBonus;
+                        streak++;
+                        bag.potatoes++;
+                        bag.width *= bagGrowthFactor;
+                        bag.height *= bagGrowthFactor;
+                        if (streak % 10 === 0) {
+                            const availableBags = [0, 1, 2].filter(i => i !== bag.bagIndex);
+                            bag.bagIndex = availableBags[Math.floor(Math.random() * availableBags.length)];
+                            streakBonus += 2;
+                            if (!soundsMuted) bagChangeSound.play();
+                        }
+                        if (!soundsMuted) potatoSound.play();
+                        createParticles(obj.x + obj.width / 2, obj.y + obj.height / 2, '#ffff00');
+                    }
+                    objects.splice(i, 1);
+                }
+            });
+
+            objects.forEach(obj => {
+                ctx.save();
+                ctx.translate(obj.x + obj.width / 2, obj.y + obj.height / 2);
+                ctx.rotate(obj.rotation);
+                ctx.drawImage(obj.img, -obj.width / 2, -obj.height / 2, obj.width, obj.height);
+                ctx.restore();
+            });
+            const bagImg = images.bags[bag.bagIndex];
+            ctx.drawImage(bagImg, bag.x, canvas.height - bag.height, bag.width, bag.height);
+
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= deltaTime;
+                if (p.life <= 0) particles.splice(i, 1);
+                else {
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5 * p.life, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            ctx.fillStyle = '#000';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Puntuación: ${score}`, 10, 50);
+            ctx.fillText(`Tiempo: ${Math.ceil(timeLeft)}s`, 10, 80);
+            ctx.fillText(`Racha: ${streak}`, 10, 110);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        muteMusic.addEventListener('click', () => {
+            musicMuted = !musicMuted;
+            muteMusic.textContent = musicMuted ? '🔇' : '🔊';
+            backgroundMusic.muted = musicMuted;
+        });
+
+        muteSounds.addEventListener('click', () => {
+            soundsMuted = !soundsMuted;
+            muteSounds.textContent = soundsMuted ? '🔇' : '🔊';
+        });
+
+        submitScore.addEventListener('click', async () => {
+            const name = playerName.value.trim();
+            const email = playerEmail.value.trim();
+            const submittedScore = score;
+
+            if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                alert('Por favor, ingresa un nombre válido y un email correcto.');
+                return;
+            }
+
+            const success = await submitScoreToGoogleForm(name, email, submittedScore);
+            if (success) {
+                scoreForm.style.display = 'none';
+                menu.style.display = 'flex';
+            }
+        });
+
+        skipScore.addEventListener('click', () => {
+            scoreForm.style.display = 'none';
+            menu.style.display = 'flex';
+        });
+
+        scoresButton.addEventListener('click', () => {
+            fetchTopScores();
+        });
+
+        closeScores.addEventListener('click', () => {
+            scoresList.style.display = 'none';
+        });
+
+        startButton.addEventListener('click', () => {
+            if (window.innerWidth > window.innerHeight) {
+                enterFullscreen();
+                menu.style.display = 'none';
+                canvas.style.display = 'block';
+                muteButtons.style.display = 'flex';
+                gameStarted = true;
+                score = 0;
+                streak = 0;
+                streakBonus = 2;
+                timeLeft = 60;
+                const bagWidth = canvas.width * 0.125;
+                bag = { 
+                    x: canvas.width / 2 - bagWidth / 2, 
+                    width: bagWidth, 
+                    height: bagWidth * (644 / 570), 
+                    potatoes: 0,
+                    bagIndex: 0
+                };
+                objects = [];
+                particles = [];
+                lastTime = performance.now();
+                if (!musicMuted) backgroundMusic.play();
+                requestAnimationFrame(gameLoop);
+            } else {
+                alert('Por favor, gira tu dispositivo a horizontal para jugar.');
+            }
+        });
+
+        window.addEventListener('orientationchange', () => {
+            resizeCanvas();
+            if (window.innerWidth <= window.innerHeight && gameStarted) {
+                backgroundMusic.pause();
+                exitFullscreen();
+                alert('Por favor, gira tu dispositivo a horizontal para continuar jugando.');
+                gameStarted = false;
+                menu.style.display = 'flex';
+                canvas.style.display = 'none';
+                muteButtons.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
